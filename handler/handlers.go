@@ -164,6 +164,9 @@ func (h *Handler) makeGatewayURL(path string) string {
 
 func (h *Handler) convertToGatewayURL(u *url.URL) string {
 	gwURL := *u
+	if gwURL.Scheme == "" {
+		gwURL.Scheme = "http"
+	}
 	gwURL.Host = h.gwh
 	return gwURL.String()
 }

@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/Mikhalevich/filesharing-web-service/template"
 	"github.com/Mikhalevich/filesharing/ctxinfo"
 	"github.com/Mikhalevich/filesharing/httpcode"
 	"github.com/sirupsen/logrus"
@@ -44,7 +43,7 @@ type Token struct {
 }
 
 type Sessioner interface {
-	GetToken(name string, r *http.Request) (*Token, error)
+	GetToken(name string, r *http.Request) *Token
 	SetToken(w http.ResponseWriter, token *Token, name string)
 	Remove(w http.ResponseWriter, name string)
 }
@@ -132,14 +131,6 @@ func (h *Handler) requestParameters(r *http.Request) (storageParameters, error) 
 	}, nil
 }
 
-func marshalFileInfo(file *File) *template.FileInfo {
-	return &template.FileInfo{
-		Name:    file.Name,
-		Size:    file.Size,
-		ModTime: file.ModTime,
-	}
-}
-
 // RecoverMiddleware middlewere recover for undefined panic error
 func (h *Handler) RecoverMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -175,12 +166,10 @@ func (h *Handler) makeGatewayRequest(name string, r *http.Request) (*http.Reques
 	req := r.Clone(r.Context())
 	req.URL.Host = h.gwh
 
-	token, err := h.session.GetToken(name, r)
-	if err != nil {
-		return nil, err
+	if token := h.session.GetToken(name, r); token != nil {
+		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", token.Value))
 	}
 
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", token.Value))
 	return req, nil
 }
 

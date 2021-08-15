@@ -17,9 +17,9 @@ func NewCookieSession(period int64) *CookieSession {
 	}
 }
 
-func (cs *CookieSession) GetToken(name string, r *http.Request) (*handler.Token, error) {
+func (cs *CookieSession) GetToken(name string, r *http.Request) *handler.Token {
 	if name == "" {
-		return nil, nil
+		return nil
 	}
 
 	for _, cook := range r.Cookies() {
@@ -29,10 +29,10 @@ func (cs *CookieSession) GetToken(name string, r *http.Request) (*handler.Token,
 
 		return &handler.Token{
 			Value: cook.Value,
-		}, nil
+		}
 	}
 
-	return nil, handler.ErrNotExist
+	return nil
 }
 
 func (cs *CookieSession) SetToken(w http.ResponseWriter, token *handler.Token, name string) {

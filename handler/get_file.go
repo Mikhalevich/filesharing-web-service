@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/Mikhalevich/filesharing/httpcode"
@@ -14,10 +16,18 @@ func (h *Handler) GetFileHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req, err := h.makeGatewayRequest(sp.StorageName, r)
-	if err != nil {
-		h.Error(httpcode.NewWrapInternalServerError(err, "unable to make request"), w, "GetFileHandler")
+	rsp, httpErr := h.processGWRequest(r, sp.StorageName)
+	if httpErr != nil {
+		h.handleError(httpErr, w, r, "GetFileHandler")
 		return
 	}
-	http.Redirect(w, req, req.URL.String(), http.StatusFound)
+
+	defer rsp.Body.Close()
+
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", sp.FileName))
+
+	if _, err := io.Copy(w, rsp.Body); err != nil {
+		h.Error(httpcode.NewWrapInternalServerError(err, "failed to transfer bytes"), w, "GetFileHandler")
+		return
+	}
 }

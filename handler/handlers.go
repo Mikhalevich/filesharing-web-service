@@ -164,7 +164,11 @@ func (h *Handler) convertToGatewayURL(u *url.URL) string {
 
 func (h *Handler) makeGatewayRequest(name string, r *http.Request) (*http.Request, error) {
 	req := r.Clone(r.Context())
+	if req.URL.Scheme == "" {
+		req.URL.Scheme = "http"
+	}
 	req.URL.Host = h.gwh
+	req.RequestURI = ""
 
 	if token := h.session.GetToken(name, r); token != nil {
 		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", token.Value))
@@ -189,12 +193,45 @@ func convertStatusCode(statusCode int) error {
 	return ErrInternalServerError
 }
 
-func (h *Handler) handleError(err error, name string, w http.ResponseWriter, r *http.Request, context string) {
-	if errors.Is(err, ErrNotAuthorized) {
-		h.ErrorRedirect(httpcode.NewHTTPError(http.StatusFound, err.Error()), w, r, fmt.Sprintf("/login/%s", name), context)
-	} else if err != nil {
-		h.Error(httpcode.NewWrapInternalServerError(err, "internal server error"), w, context)
+func (h *Handler) handleError(err httpcode.Error, w http.ResponseWriter, r *http.Request, context string) {
+	if redirect, ok := err.(*httpcode.HTTPRedirectError); ok {
+		h.ErrorRedirect(redirect, w, r, redirect.Location(), context)
+		return
+	}
+
+	if err != nil {
+		h.Error(err, w, context)
+		return
 	}
 
 	http.Error(w, "empty error", http.StatusInternalServerError)
+}
+
+func (h *Handler) processGWRequest(originReq *http.Request, storageName string) (*http.Response, httpcode.Error) {
+	req, err := h.makeGatewayRequest(storageName, originReq)
+	if err != nil {
+		return nil, httpcode.NewWrapInternalServerError(err, "unable to make request")
+	}
+
+	client := http.Client{}
+
+	rsp, err := client.Do(req)
+	if err != nil {
+		return nil, httpcode.NewWrapInternalServerError(err, "unable to execute request")
+	}
+
+	defer func() {
+		if err != nil {
+			rsp.Body.Close()
+		}
+	}()
+
+	err = convertStatusCode(rsp.StatusCode)
+	if errors.Is(err, ErrNotAuthorized) {
+		return nil, httpcode.NewHTTPRedirectFoundError(fmt.Sprintf("/login/%s", storageName), err.Error())
+	} else if err != nil {
+		return nil, httpcode.NewWrapInternalServerError(err, "internal server error")
+	}
+
+	return rsp, nil
 }

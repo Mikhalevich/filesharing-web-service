@@ -15,26 +15,13 @@ func (h *Handler) IndexHTMLHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req, err := h.makeGatewayRequest(sp.StorageName, r)
-	if err != nil {
-		h.Error(httpcode.NewWrapInternalServerError(err, "unable to make request"), w, "IndexHTMLHandler")
-		return
-	}
-
-	client := http.Client{}
-
-	rsp, err := client.Do(req)
-	if err != nil {
-		h.Error(httpcode.NewWrapInternalServerError(err, "unable to make request"), w, "IndexHTMLHandler")
+	rsp, httpErr := h.processGWRequest(r, sp.StorageName)
+	if httpErr != nil {
+		h.handleError(httpErr, w, r, "IndexHTMLHandler")
 		return
 	}
 
 	defer rsp.Body.Close()
-
-	if err := convertStatusCode(rsp.StatusCode); err != nil {
-		h.handleError(err, sp.StorageName, w, r, "IndexHTMLHandler")
-		return
-	}
 
 	w.Header().Set("Content-type", "text/html")
 	if _, err := io.Copy(w, rsp.Body); err != nil {

@@ -14,10 +14,11 @@ func (h *Handler) UploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req, err := h.makeGatewayRequest(sp.StorageName, r)
-	if err != nil {
-		h.Error(httpcode.NewWrapInternalServerError(err, "unable to make request"), w, "UploadHandler")
+	rsp, httpErr := h.processGWRequest(r, sp.StorageName)
+	if httpErr != nil {
+		h.handleError(httpErr, w, r, "GetFileHandler")
 		return
 	}
-	http.Redirect(w, req, req.URL.String(), http.StatusFound)
+
+	defer rsp.Body.Close()
 }

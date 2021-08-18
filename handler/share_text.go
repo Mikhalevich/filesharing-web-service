@@ -3,7 +3,6 @@ package handler
 import (
 	"fmt"
 	"net/http"
-	"net/url"
 
 	"github.com/Mikhalevich/filesharing/httpcode"
 )
@@ -24,18 +23,12 @@ func (h *Handler) ShareTextHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rsp, err := http.PostForm(h.convertToGatewayURL(r.URL), url.Values{"title": {title}, "body": {body}})
-	if err != nil {
-		h.Error(httpcode.NewWrapInternalServerError(err, "unable to make request"), w, "ShareTextHandler")
+	rsp, httpErr := h.processURLEncodedRequest(r, sp.StorageName)
+	if httpErr != nil {
+		h.handleError(httpErr, w, r, "ShareTextHandler")
 		return
 	}
 
 	defer rsp.Body.Close()
-
-	if err := convertStatusCode(rsp.StatusCode); err != nil {
-		h.Error(httpcode.NewWrapInternalServerError(err, fmt.Sprintf("unable to store text file: %s for storage: %s", title, sp.StorageName)), w, "ShareTextHandler")
-		return
-	}
-
 	w.WriteHeader(http.StatusOK)
 }

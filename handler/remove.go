@@ -1,9 +1,7 @@
 package handler
 
 import (
-	"fmt"
 	"net/http"
-	"net/url"
 
 	"github.com/Mikhalevich/filesharing/httpcode"
 )
@@ -22,18 +20,12 @@ func (h *Handler) RemoveHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rsp, err := http.PostForm(h.convertToGatewayURL(r.URL), url.Values{"fileName": {fileName}})
-	if err != nil {
-		h.Error(httpcode.NewWrapInternalServerError(err, "unable to make request"), w, "RemoveHandler")
+	rsp, httpErr := h.processURLEncodedRequest(r, sp.StorageName)
+	if httpErr != nil {
+		h.handleError(httpErr, w, r, "RemoveHandler")
 		return
 	}
 
 	defer rsp.Body.Close()
-
-	if err := convertStatusCode(rsp.StatusCode); err != nil {
-		h.Error(httpcode.NewWrapInternalServerError(err, fmt.Sprintf("unable to remove file: %s from storage: %s", fileName, sp.StorageName)), w, "RemoveHandler")
-		return
-	}
-
 	w.WriteHeader(http.StatusOK)
 }

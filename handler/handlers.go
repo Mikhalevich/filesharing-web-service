@@ -1,10 +1,14 @@
 package handler
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/Mikhalevich/filesharing/ctxinfo"
 	"github.com/Mikhalevich/filesharing/httpcode"
@@ -144,39 +148,6 @@ func (h *Handler) RecoverMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (h *Handler) makeGatewayURL(path string) string {
-	u, err := url.Parse(h.gwh)
-	if err != nil {
-		return ""
-	}
-	u.Path = path
-	return u.String()
-}
-
-func (h *Handler) convertToGatewayURL(u *url.URL) string {
-	gwURL := *u
-	if gwURL.Scheme == "" {
-		gwURL.Scheme = "http"
-	}
-	gwURL.Host = h.gwh
-	return gwURL.String()
-}
-
-func (h *Handler) makeGatewayRequest(name string, r *http.Request) (*http.Request, error) {
-	req := r.Clone(r.Context())
-	if req.URL.Scheme == "" {
-		req.URL.Scheme = "http"
-	}
-	req.URL.Host = h.gwh
-	req.RequestURI = ""
-
-	if token := h.session.GetToken(name, r); token != nil {
-		req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", token.Value))
-	}
-
-	return req, nil
-}
-
 func convertStatusCode(statusCode int) error {
 	switch statusCode {
 	case http.StatusOK:
@@ -207,12 +178,96 @@ func (h *Handler) handleError(err httpcode.Error, w http.ResponseWriter, r *http
 	http.Error(w, "empty error", http.StatusInternalServerError)
 }
 
-func (h *Handler) processGWRequest(originReq *http.Request, storageName string) (*http.Response, httpcode.Error) {
-	req, err := h.makeGatewayRequest(storageName, originReq)
+func (h *Handler) makeGatewayURL(path string) string {
+	u, err := url.Parse(h.gwh)
 	if err != nil {
-		return nil, httpcode.NewWrapInternalServerError(err, "unable to make request")
+		return ""
+	}
+	u.Path = path
+	return u.String()
+}
+
+func (h *Handler) convertToGatewayURL(u *url.URL) string {
+	gwURL := *u
+	if gwURL.Scheme == "" {
+		gwURL.Scheme = "http"
+	}
+	gwURL.Host = h.gwh
+	return gwURL.String()
+}
+
+func (h *Handler) makeURLEncodedRequest(originReq *http.Request, storageName string) (*http.Request, error) {
+	if originReq.Form == nil {
+		originReq.ParseForm()
 	}
 
+	if originReq.Form == nil {
+		return nil, errors.New("invalid form values")
+	}
+
+	req, err := http.NewRequest(http.MethodPost, h.convertToGatewayURL(originReq.URL), strings.NewReader(originReq.Form.Encode()))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if token := h.session.GetToken(storageName, originReq); token != nil {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token.Value))
+	}
+
+	return req, nil
+}
+
+func (h *Handler) makeMultipartRequest(originReq *http.Request, storageName string) (*http.Request, error) {
+	mr, err := originReq.MultipartReader()
+	if err != nil {
+		return nil, err
+	}
+
+	body := &bytes.Buffer{}
+	mw := multipart.NewWriter(body)
+
+	for {
+		part, err := mr.NextPart()
+		if errors.Is(err, io.EOF) {
+			break
+		} else if err != nil {
+			return nil, err
+		}
+
+		fileName := part.FileName()
+		if fileName == "" {
+			continue
+		}
+
+		filePart, err := mw.CreateFormFile(fileName, fileName)
+		if err != nil {
+			return nil, err
+		}
+
+		if _, err = io.Copy(filePart, part); err != nil {
+			return nil, err
+		}
+	}
+
+	if err = mw.Close(); err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, h.convertToGatewayURL(originReq.URL), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	if token := h.session.GetToken(storageName, originReq); token != nil {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token.Value))
+	}
+
+	return req, nil
+}
+
+func (h *Handler) processGWRequest(req *http.Request, storageName string) (*http.Response, httpcode.Error) {
 	client := http.Client{}
 
 	rsp, err := client.Do(req)
@@ -234,4 +289,39 @@ func (h *Handler) processGWRequest(originReq *http.Request, storageName string) 
 	}
 
 	return rsp, nil
+}
+
+func (h *Handler) processGetRequest(originReq *http.Request, storageName string) (*http.Response, httpcode.Error) {
+	req, err := http.NewRequest(http.MethodGet, h.convertToGatewayURL(originReq.URL), nil)
+	if err != nil {
+		return nil, httpcode.NewWrapInternalServerError(err, "unable to make request")
+	}
+
+	if ct := originReq.Header.Get("Content-Type"); ct != "" {
+		req.Header.Set("Content-Type", ct)
+	}
+
+	if token := h.session.GetToken(storageName, originReq); token != nil {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token.Value))
+	}
+
+	return h.processGWRequest(req, storageName)
+}
+
+func (h *Handler) processURLEncodedRequest(originReq *http.Request, storageName string) (*http.Response, httpcode.Error) {
+	req, err := h.makeURLEncodedRequest(originReq, storageName)
+	if err != nil {
+		return nil, httpcode.NewWrapInternalServerError(err, "unable to make request")
+	}
+
+	return h.processGWRequest(req, storageName)
+}
+
+func (h *Handler) processMultipartRequest(originReq *http.Request, storageName string) (*http.Response, httpcode.Error) {
+	req, err := h.makeMultipartRequest(originReq, storageName)
+	if err != nil {
+		return nil, httpcode.NewWrapInternalServerError(err, "unable to make request")
+	}
+
+	return h.processGWRequest(req, storageName)
 }

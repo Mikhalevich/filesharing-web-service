@@ -14,11 +14,12 @@ func (h *Handler) UploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rsp, httpErr := h.processGWRequest(r, sp.StorageName)
+	rsp, httpErr := h.processMultipartRequest(r, sp.StorageName)
 	if httpErr != nil {
 		h.handleError(httpErr, w, r, "GetFileHandler")
 		return
 	}
 
 	defer rsp.Body.Close()
+	w.WriteHeader(http.StatusOK)
 }

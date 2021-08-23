@@ -23,7 +23,7 @@ func (h *Handler) ShareTextHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rsp, httpErr := h.processURLEncodedRequest(r, sp.StorageName)
+	rsp, httpErr := h.processURLEncodedRequest(r, sp.StorageName, w)
 	if httpErr != nil {
 		h.handleError(httpErr, w, r, "ShareTextHandler")
 		return

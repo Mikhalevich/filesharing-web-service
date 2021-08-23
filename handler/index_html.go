@@ -15,7 +15,7 @@ func (h *Handler) IndexHTMLHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rsp, httpErr := h.processGetRequest(r, sp.StorageName)
+	rsp, httpErr := h.processGetRequest(r, sp.StorageName, w)
 	if httpErr != nil {
 		h.handleError(httpErr, w, r, "IndexHTMLHandler")
 		return

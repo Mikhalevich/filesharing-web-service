@@ -14,7 +14,7 @@ func (h *Handler) UploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rsp, httpErr := h.processMultipartRequest(r, sp.StorageName)
+	rsp, httpErr := h.processMultipartRequest(r, sp.StorageName, w)
 	if httpErr != nil {
 		h.handleError(httpErr, w, r, "GetFileHandler")
 		return

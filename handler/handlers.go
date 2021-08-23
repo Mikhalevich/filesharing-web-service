@@ -267,7 +267,7 @@ func (h *Handler) makeMultipartRequest(originReq *http.Request, storageName stri
 	return req, nil
 }
 
-func (h *Handler) processGWRequest(req *http.Request, storageName string) (*http.Response, httpcode.Error) {
+func (h *Handler) processGWRequest(req *http.Request, storageName string, w http.ResponseWriter) (*http.Response, httpcode.Error) {
 	client := http.Client{}
 
 	rsp, err := client.Do(req)
@@ -288,10 +288,14 @@ func (h *Handler) processGWRequest(req *http.Request, storageName string) (*http
 		return nil, httpcode.NewWrapInternalServerError(err, "internal server error")
 	}
 
+	if token := rsp.Header.Get("X-Token"); token != "" {
+		h.session.SetToken(w, &Token{Value: string(token)}, storageName)
+	}
+
 	return rsp, nil
 }
 
-func (h *Handler) processGetRequest(originReq *http.Request, storageName string) (*http.Response, httpcode.Error) {
+func (h *Handler) processGetRequest(originReq *http.Request, storageName string, w http.ResponseWriter) (*http.Response, httpcode.Error) {
 	req, err := http.NewRequest(http.MethodGet, h.convertToGatewayURL(originReq.URL), nil)
 	if err != nil {
 		return nil, httpcode.NewWrapInternalServerError(err, "unable to make request")
@@ -305,23 +309,23 @@ func (h *Handler) processGetRequest(originReq *http.Request, storageName string)
 		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token.Value))
 	}
 
-	return h.processGWRequest(req, storageName)
+	return h.processGWRequest(req, storageName, w)
 }
 
-func (h *Handler) processURLEncodedRequest(originReq *http.Request, storageName string) (*http.Response, httpcode.Error) {
+func (h *Handler) processURLEncodedRequest(originReq *http.Request, storageName string, w http.ResponseWriter) (*http.Response, httpcode.Error) {
 	req, err := h.makeURLEncodedRequest(originReq, storageName)
 	if err != nil {
 		return nil, httpcode.NewWrapInternalServerError(err, "unable to make request")
 	}
 
-	return h.processGWRequest(req, storageName)
+	return h.processGWRequest(req, storageName, w)
 }
 
-func (h *Handler) processMultipartRequest(originReq *http.Request, storageName string) (*http.Response, httpcode.Error) {
+func (h *Handler) processMultipartRequest(originReq *http.Request, storageName string, w http.ResponseWriter) (*http.Response, httpcode.Error) {
 	req, err := h.makeMultipartRequest(originReq, storageName)
 	if err != nil {
 		return nil, httpcode.NewWrapInternalServerError(err, "unable to make request")
 	}
 
-	return h.processGWRequest(req, storageName)
+	return h.processGWRequest(req, storageName, w)
 }

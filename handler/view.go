@@ -16,11 +16,12 @@ func (h *Handler) ViewHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fileResp, err := http.Get(h.convertToGatewayURL(r.URL))
-	if err != nil {
-		h.Error(httpcode.NewWrapInternalServerError(err, "unable to make request"), w, "ViewHandler")
+	fileResp, httpErr := h.processGetRequest(r, sp.StorageName, w)
+	if httpErr != nil {
+		h.handleError(httpErr, w, r, "ViewHandler")
 		return
 	}
+
 	defer fileResp.Body.Close()
 
 	type fileList struct {

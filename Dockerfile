@@ -8,7 +8,7 @@ WORKDIR /app
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=vendor -a -installsuffix cgo -ldflags="-w -s" -o /go/bin/web
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=vendor -a -installsuffix cgo -ldflags="-w -s" -o /go/bin/web ./cmd/web/main.go
 
 FROM scratch
 COPY --from=builder /go/bin/web /go/bin/web
